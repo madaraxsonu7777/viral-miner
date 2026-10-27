@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="robots" content="noindex,nofollow" />
+<title>Cache · Live</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;background:#0a0a11;color:#e8e8f0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  header{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid #1e1e2c;flex-wrap:wrap}
+  h1{margin:0;font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:#9b9bb5;font-weight:500}
+  .hr{display:flex;align-items:center;gap:9px;font-size:11.5px;color:#7c7c95}
+  button{background:#171725;color:#e8e8f0;border:1px solid #2a2a3d;border-radius:9px;padding:6px 12px;font-size:11.5px;cursor:pointer;font-family:inherit}
+  button:hover{background:#1f1f30}
+  .wrap{padding:16px;max-width:1150px;margin:0 auto}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:10px;margin-bottom:16px}
+  .stat{background:#101019;border:1px solid #1e1e2c;border-radius:12px;padding:14px}
+  .stat .l{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#7c7c95;margin-bottom:7px}
+  .stat .v{font-size:26px;font-weight:600;line-height:1}
+  .g{color:#38ef7d}.b{color:#22d3ee}.p{color:#a78bfa}.a{color:#f59e0b}
+  .panel{background:#101019;border:1px solid #1e1e2c;border-radius:12px;padding:14px;margin-bottom:16px}
+  .panel h2{margin:0 0 10px;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#7c7c95;font-weight:500}
+  .box{height:150px}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th,td{text-align:left;padding:8px 6px}
+  th{color:#7c7c95;font-size:10px;letter-spacing:.12em;text-transform:uppercase;font-weight:500}
+  tr.mine td{background:rgba(56,239,125,.05)}
+  .pill{padding:2px 8px;border-radius:99px;font-size:10.5px}
+  .pill.on{background:rgba(56,239,125,.14);color:#38ef7d}
+  .pill.off{background:rgba(124,124,149,.14);color:#9b9bb5}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;color:#9b9bb5}
+  .lock{max-width:360px;margin:70px auto;background:#101019;border:1px solid #1e1e2c;border-radius:14px;padding:22px}
+  .lock input{width:100%;padding:10px 12px;border-radius:9px;border:1px solid #2a2a3d;background:#0a0a11;color:#e8e8f0;font-family:inherit;font-size:12.5px;margin:10px 0}
+  .lock button{width:100%;padding:10px}
+  .hidden{display:none!important}
+</style>
+</head>
+<body>
+
+<script>
+  window.VK = {
+    KEY:   "Sonu8899@2125",
+    URL:   "https://teaching-robin-239889.upstash.io",
+    TOKEN: "gQAAAAAAA6kRAAIgcDE0OWU5ZmIzMWQzZWI0YmVjYjZjNzViOTE1ZDI4YTk4Ng"
+  };
+</script>
+
+<div id="lock" class="lock hidden">
+  <h1>Dashboard key</h1>
+  <input id="keyIn" type="password" placeholder="key" />
+  <button id="keyGo">Unlock</button>
+  <p class="mono" id="lockMsg" style="min-height:14px"></p>
+</div>
+
+<div id="app" class="hidden">
+  <header>
+    <h1>Live dashboard</h1>
+    <div class="hr">
+      <span id="clk">--:--:--</span>
+      <button id="btnR">Refresh</button>
+      <button id="btnL">Lock</button>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <div class="grid">
+      <div class="stat"><div class="l">Devices online</div><div class="v g" id="sOnline">0</div></div>
+      <div class="stat"><div class="l">Mining now</div><div class="v b" id="sMine">0</div></div>
+      <div class="stat"><div class="l">Total hashrate</div><div class="v p" id="sHs">0</div></div>
+      <div class="stat"><div class="l">Launches</div><div class="v a" id="sLaunch">0</div></div>
+      <div class="stat"><div class="l">Avg / device</div><div class="v" id="sAvg">0</div></div>
+    </div>
+
+    <div class="panel">
+      <h2>Devices online — last 30 min</h2>
+      <div class="box"><canvas id="ch"></canvas></div>
+    </div>
+
+    <div class="panel">
+      <h2>Devices <span class="mono" id="cnt"></span></h2>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr>
+            <th>Device</th><th>Status</th><th>Model</th><th>H/s</th><th>Country</th><th>Last ping</th>
+          </tr></thead>
+          <tbody id="rows"><tr><td colspan="6" class="mono">loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var CFG = window.VK, LS_HIST = "vk_hist";
+  var $ = function (i) { return document.getElementById(i); };
+  var timer = null, hist = [];
+  try { hist = JSON.parse(localStorage.getItem(LS_HIST) || "[]"); } catch (e) { hist = []; }
+
+  function cmd() {
+    var parts = Array.prototype.slice.call(arguments);
+    var url = CFG.URL.replace(/\/+$/, "") + "/" + parts.map(encodeURIComponent).join("/") +
+              "?_token=" + encodeURIComponent(CFG.TOKEN);
+    return fetch(url).then(function (r) {
+      if (!r.ok) throw new Error("http " + r.status);
+      return r.json();
+    }).then(function (j) { return j.result; });
+  }
+  function obj(x) {
+    if (Array.isArray(x)) { var o = {}, i; for (i = 0; i < x.length; i += 2) o[x[i]] = x[i + 1]; return o; }
+    return (x && typeof x === "object") ? x : {};
+  }
+
+  var KEY = sessionStorage.getItem("vk_ok");
+  function unlock() { $("lock").classList.add("hidden"); $("app").classList.remove("hidden"); }
+  if (KEY === "1") unlock();
+  else {
+    $("lock").classList.remove("hidden");
+    $("keyGo").onclick = function () {
+      if ($("keyIn").value.trim() === CFG.KEY) {
+        sessionStorage.setItem("vk_ok", "1"); unlock(); load();
+        if (!timer) timer = setInterval(load, 5000);
+      } else { $("lockMsg").textContent = "galat key"; }
+    };
+    $("keyIn").addEventListener("keydown", function (e) { if (e.key === "Enter") $("keyGo").click(); });
+  }
+  $("btnL").onclick = function () { sessionStorage.removeItem("vk_ok"); location.reload(); };
+  $("btnR").onclick = load;
+
+  function ago(ts) {
+    var d = Math.floor(Date.now() / 1000) - Number(ts || 0);
+    if (d < 5) return "abhi";
+    if (d < 60) return d + "s";
+    if (d < 3600) return Math.floor(d / 60) + "m";
+    return Math.floor(d / 3600) + "h";
+  }
+  function tick() { $("clk").textContent = new Date().toLocaleTimeString(); }
+  tick(); setInterval(tick, 1000);
+
+  function draw() {
+    var c = $("ch"); if (!c) return;
+    var dpr = window.devicePixelRatio || 1;
+    var w = c.parentElement.clientWidth, h = c.parentElement.clientHeight;
+    c.width = w * dpr; c.height = h * dpr;
+    c.style.width = w + "px"; c.style.height = h + "px";
+    var ctx = c.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    var cut = Date.now() - 30 * 60 * 1000;
+    var pts = hist.filter(function (p) { return p.t > cut; });
+    var max = 3;
+    pts.forEach(function (p) { if (p.v > max) max = p.v; });
+
+    ctx.strokeStyle = "rgba(255,255,255,.06)";
+    for (var i = 0; i <= 3; i++) {
+      var y = 10 + (h - 26) * (i / 3);
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+    }
+    if (pts.length < 2) {
+      ctx.fillStyle = "#5c5c75"; ctx.font = "11px system-ui";
+      ctx.fillText("data aa raha hai…", 8, h / 2); return;
+    }
+    var step = (w - 8) / (pts.length - 1);
+    var g = ctx.createLinearGradient(0, 0, 0, h);
+    g.addColorStop(0, "rgba(56,239,125,.30)"); g.addColorStop(1, "rgba(56,239,125,0)");
+    ctx.beginPath(); ctx.moveTo(0, h - 14);
+    pts.forEach(function (p, i) { ctx.lineTo(4 + i * step, 10 + (h - 26) * (1 - p.v / max)); });
+    ctx.lineTo(4 + (pts.length - 1) * step, h - 14); ctx.closePath();
+    ctx.fillStyle = g; ctx.fill();
+
+    ctx.beginPath();
+    pts.forEach(function (p, i) {
+      var x = 4 + i * step, y = 10 + (h - 26) * (1 - p.v / max);
+      i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    });
+    ctx.strokeStyle = "#38ef7d"; ctx.lineWidth = 2; ctx.stroke();
+
+    ctx.fillStyle = "#5c5c75"; ctx.font = "10px system-ui";
+    ctx.fillText("peak " + max, 5, 10);
+    ctx.fillText("30 min pehle", 5, h - 3);
+    ctx.fillText("abhi", w - 26, h - 3);
+  }
+
+  function load() {
+    var cut = Math.floor(Date.now() / 1000) - 180;
+    cmd("zremrangebyscore", "live:visitors", "-inf", cut)
+      .then(function () { return cmd("zremrangebyscore", "live:miners", "-inf", cut); })
+      .then(function () { return cmd("zcard", "live:visitors"); })
+      .then(function (online) {
+        return cmd("zcard", "live:miners").then(function (mining) {
+          return cmd("get", "stat:visits").then(function (launch) {
+            return cmd("zrevrange", "live:visitors", "0", "59").then(function (ids) {
+              return { online: Number(online || 0), mining: Number(mining || 0),
+                       launch: Number(launch || 0), ids: ids || [] };
+            });
+          });
+        });
+      })
+      .then(function (d) {
+        return Promise.all(d.ids.slice(0, 40).map(function (sid) {
+          return cmd("hgetall", "meta:" + sid).then(function (m) {
+            var o = obj(m); o.sid = sid; return o;
+          });
+        })).then(function (s) { d.sessions = s; return d; });
+      })
+      .then(function (d) {
+        var totalHs = 0;
+        d.sessions.forEach(function (s) { totalHs += Number(s.hs || 0); });
+
+        $("sOnline").textContent = d.online;
+        $("sMine").textContent   = d.mining;
+        $("sHs").textContent     = totalHs >= 1000 ? (totalHs / 1000).toFixed(1) + "k" : totalHs;
+        $("sLaunch").textContent = d.launch;
+        $("sAvg").textContent    = (d.mining ? Math.round(totalHs / d.mining) : 0) + " H/s";
+
+        hist.push({ t: Date.now(), v: d.online });
+        var c2 = Date.now() - 35 * 60 * 1000;
+        hist = hist.filter(function (p) { return p.t > c2; });
+        try { localStorage.setItem(LS_HIST, JSON.stringify(hist)); } catch (e) {}
+        draw();
+
+        var rows = $("rows");
+        rows.innerHTML = "";
+        $("cnt").textContent = d.sessions.length ? "(" + d.sessions.length + ")" : "";
+        if (!d.sessions.length) {
+          rows.innerHTML = '<tr><td colspan="6" class="mono">koi device online nahi</td></tr>';
+          return;
+        }
+        d.sessions.sort(function (a, b) { return Number(b.hs || 0) - Number(a.hs || 0); });
+        d.sessions.forEach(function (s) {
+          var on = Number(s.hs || 0) > 0;
+          var tr = document.createElement("tr");
+          if (on) tr.className = "mine";
+          tr.innerHTML =
+            '<td class="mono">' + String(s.sid).slice(0, 10) + '…</td>' +
+            '<td><span class="pill ' + (on ? "on" : "off") + '">' + (on ? "mining" : "idle") + '</span></td>' +
+            '<td>' + (s.model || "?") + '</td>' +
+            '<td>' + (s.hs || 0) + '</td>' +
+            '<td>' + (s.country || "??") + '</td>' +
+            '<td>' + ago(s.last) + '</td>';
+          rows.appendChild(td_row(tr));
+        });
+        function td_row(t) { return t; }
+      })
+      .catch(function (e) {
+        $("rows").innerHTML = '<tr><td colspan="6" class="mono">error: ' + e.message +
+          ' — Upstash URL/TOKEN check karo</td></tr>';
+      });
+  }
+
+  if (KEY === "1") { load(); timer = setInterval(load, 5000); }
+  window.addEventListener("resize", draw);
+})();
+</script>
+</body>
+</html>
