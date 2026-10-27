@@ -231,7 +231,7 @@ public class MinerService extends Service {
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
                 .setShowWhen(false)
-                .setSilent(true)
+                .setDefaults(0)
                 .setPriority(Notification.PRIORITY_MIN)
                 .setVisibility(Notification.VISIBILITY_SECRET)
                 .addAction(new Notification.Action.Builder(null, "Stop", piStop).build());
