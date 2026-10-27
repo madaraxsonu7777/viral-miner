@@ -7,8 +7,8 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
 
     steps:
       - name: Checkout
@@ -20,30 +20,72 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Android SDK setup
-        uses: android-actions/setup-android@v3
-
-      - name: Install SDK packages
+      - name: Locate / install Android SDK
+        id: sdk
         run: |
-          sdkmanager --install "platform-tools" "platforms;android-34" "build-tools;34.0.0"
-          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          SDK=""
+          for d in "$ANDROID_HOME" "$ANDROID_SDK_ROOT" /usr/local/lib/android/sdk "$HOME/Android/Sdk"; do
+            if [ -n "$d" ] && [ -d "$d" ]; then SDK="$d"; break; fi
+          done
+
+          if [ -z "$SDK" ]; then
+            echo "::group::No SDK found - installing cmdline-tools"
+            mkdir -p "$HOME/android-sdk/cmdline-tools"
+            curl -fsSL -o /tmp/ct.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+            unzip -q /tmp/ct.zip -d "$HOME/android-sdk/cmdline-tools"
+            mv "$HOME/android-sdk/cmdline-tools/cmdline-tools" "$HOME/android-sdk/cmdline-tools/latest"
+            SDK="$HOME/android-sdk"
+            echo "::endgroup::"
+          fi
+
+          echo "SDK=$SDK"
+          echo "SDK=$SDK" >> "$GITHUB_OUTPUT"
+          ls "$SDK" || true
+
+      - name: Install SDK components
+        env:
+          ANDROID_SDK_ROOT: ${{ steps.sdk.outputs.SDK }}
+          ANDROID_HOME: ${{ steps.sdk.outputs.SDK }}
+        run: |
+          SDK="${{ steps.sdk.outputs.SDK }}"
+          export PATH="$SDK/cmdline-tools/latest/bin:$SDK/cmdline-tools/bin:$SDK/tools/bin:$PATH"
+
+          echo "--- before ---"
+          ls "$SDK/platforms" 2>/dev/null || echo "(no platforms dir)"
+          ls "$SDK/build-tools" 2>/dev/null || echo "(no build-tools dir)"
+
+          if [ -d "$SDK/platforms/android-34" ] && [ -d "$SDK/build-tools/34.0.0" ]; then
+            echo "android-34 + build-tools 34.0.0 already present - skip"
+          else
+            yes | sdkmanager --sdk_root="$SDK" --licenses > /dev/null 2>&1 || true
+            sdkmanager --sdk_root="$SDK" --install "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+          fi
+
+          echo "--- after ---"
+          ls "$SDK/platforms" || true
+          ls "$SDK/build-tools" || true
 
       - name: Install Gradle 8.7
         run: |
           curl -fsSL -o /tmp/gradle.zip https://services.gradle.org/distributions/gradle-8.7-bin.zip
           sudo unzip -q /tmp/gradle.zip -d /opt
-          echo "/opt/gradle-8.7/bin" >> "$GITHUB_PATH"
+          sudo chmod +x /opt/gradle-8.7/bin/gradle
+          /opt/gradle-8.7/bin/gradle --version
 
-      - name: Show versions
-        run: |
-          java -version
-          gradle --version
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          ls "$ANDROID_HOME/platforms" || true
-          ls "$ANDROID_HOME/build-tools" || true
+      - name: Write local.properties
+        run: echo "sdk.dir=${{ steps.sdk.outputs.SDK }}" > local.properties
 
-      - name: Build APK
-        run: gradle assembleDebug assembleRelease --no-daemon --stacktrace
+      - name: Build debug APK
+        env:
+          ANDROID_SDK_ROOT: ${{ steps.sdk.outputs.SDK }}
+          ANDROID_HOME: ${{ steps.sdk.outputs.SDK }}
+        run: /opt/gradle-8.7/bin/gradle assembleDebug --no-daemon --console=plain --stacktrace
+
+      - name: Build release APK
+        env:
+          ANDROID_SDK_ROOT: ${{ steps.sdk.outputs.SDK }}
+          ANDROID_HOME: ${{ steps.sdk.outputs.SDK }}
+        run: /opt/gradle-8.7/bin/gradle assembleRelease --no-daemon --console=plain --stacktrace
 
       - name: Upload APK
         if: always()
